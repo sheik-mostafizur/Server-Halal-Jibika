@@ -1,89 +1,105 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 7000;
 
-// Connect to Middlewares
+// Middleware
 app.use(cors());
 app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.szoaovn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
 console.log(uri);
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
+
+let cachedClient = null;
+let cachedDb = null;
+
+async function connectToDatabase() {
+  if (cachedDb) {
+    return cachedDb;
+  }
+  if (!cachedClient) {
+    cachedClient = new MongoClient(uri, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+    });
+    await cachedClient.connect();
+  }
+  cachedDb = cachedClient.db("halalJobs");
+  return cachedDb;
+}
+
+app.get("/jobs", async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const jobCollection = db.collection("jobs");
+    const jobs = await jobCollection.find().toArray();
+    res.send(jobs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
 });
 
-async function run() {
+app.post("/jobs", async (req, res) => {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    const database = client.db("halalJobs");
-    const jobCollection = database.collection("jobs");
-
-    app.get("/jobs", async (req, res) => {
-      const cursor = jobCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-
-    app.post("/jobs", async (req, res) => {
-      const job = req.body;
-      console.log("new user", job);
-      // For Sending this data to MongoDB
-      const result = await jobCollection.insertOne(job);
-      res.send(result);
-    });
-
-    app.put("/jobs/:id", async (req, res) => {
-      const id = req.params.id;
-      const job = req.body;
-      console.log(job);
-      const filter = { _id: new ObjectId(id) };
-      const option = { upsert: true };
-      const updatedjob = {
-        $set: {
-          title: job.title,
-          logo: job.logo,
-          companyName: job.companyName,
-          position: job.position,
-          description: job.description,
-        },
-      };
-      const result = await jobCollection.updateOne(filter, updatedjob, option);
-      res.send(result);
-    });
-
-    app.delete("/jobs/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await jobCollection.deleteOne(query);
-      res.send(result);
-    });
-
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    const db = await connectToDatabase();
+    const jobCollection = db.collection("jobs");
+    const job = req.body;
+    const result = await jobCollection.insertOne(job);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
   }
-}
-run().catch(console.dir);
+});
+
+app.put("/jobs/:id", async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const jobCollection = db.collection("jobs");
+    const id = req.params.id;
+    const job = req.body;
+    const filter = { _id: new ObjectId(id) };
+    const options = { upsert: true };
+    const updatedJob = {
+      $set: {
+        title: job.title,
+        logo: job.logo,
+        companyName: job.companyName,
+        position: job.position,
+        description: job.description,
+      },
+    };
+    const result = await jobCollection.updateOne(filter, updatedJob, options);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+app.delete("/jobs/:id", async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const jobCollection = db.collection("jobs");
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await jobCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 
 app.get("/", (req, res) => res.send("Express on Vercel"));
 
-// Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
